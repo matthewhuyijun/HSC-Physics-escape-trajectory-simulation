@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbital Trajectory Visualizer</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* FIXED: pointer-events logic */
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(30, 41, 59, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            width: 300px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            user-select: none;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        #controls > * {
+            pointer-events: auto;
+        }
+
+        h2 { margin: 0 0 15px 0; font-size: 1.2rem; color: #38bdf8; }
+
+        .slider-container { margin-bottom: 20px; }
+        
+        label { display: block; margin-bottom: 8px; font-weight: bold; font-size: 0.9rem; }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #475569;
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+            position: relative;
+            z-index: 1001;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #38bdf8;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background .15s ease-in-out;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            margin-top: -2px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover { background: #0ea5e9; }
+
+        .stats {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .stat-row { display: flex; justify-content: space-between; }
+        .stat-val { font-family: monospace; color: #cbd5e1; }
+
+        .legend { margin-top: 10px; font-size: 0.8rem; color: #94a3b8; }
+        .legend span { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            cursor: grab;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1; 
+        }
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+
+        .classification {
+            font-weight: bold;
+            color: #fbbf24;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        button {
+            background: #334155;
+            border: 1px solid #475569;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            flex: 1;
+            position: relative;
+            z-index: 1001;
+        }
+        button:hover { background: #475569; }
+
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <div id="controls">
+        <h2>Orbital Control</h2>
+        
+        <div class="slider-container">
+            <label for="velocitySlider">Velocity (v): <span id="vDisplay">1.00</span> v<sub>orb</sub></label>
+            <input type="range" id="velocitySlider" min="0.5" max="2.0" step="0.001" value="1.0">
+            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #94a3b8; margin-top: 5px;">
+                <span>Fall</span>
+                <span>Circ (1.0)</span>
+                <span>Esc (1.41)</span>
+                <span>Fast</span>
+            </div>
+            <div class="btn-group">
+                <button onclick="setSpeed(1.0)">Set Circular</button>
+                <button onclick="setSpeed(1.414)">Set Escape</button>
+            </div>
+        </div>
+
+        <div class="stats">
+            <span id="orbitType" class="classification">Circular Orbit</span>
+            <div class="stat-row">
+                <span>Eccentricity (e):</span>
+                <span id="eccentricityDisplay" class="stat-val">0.00</span>
+            </div>
+        </div>
+
+        <div class="legend" style="margin-top: 20px;">
+            <div><span style="border: 1px dashed #38bdf8; width: 15px; height: 0px; display: inline-block; vertical-align: middle;"></span> Reference Circular Orbit</div>
+            <div><span style="background: #fbbf24; width: 15px; height: 2px; display: inline-block; vertical-align: middle;"></span> Current Trajectory</div>
+            <div><span style="background: white; border-radius: 50%;"></span> Central Mass</div>
+            <div><span style="background: #4ade80; border-radius: 50%;"></span> Injection Point</div>
+        </div>
+        
+        <div style="margin-top: 15px; font-size: 0.8rem; color: #64748b; font-style: italic;">
+            * Scroll to Zoom, Drag to Move
+        </div>
+    </div>
+
+    <div class="zoom-controls">
+        <button class="zoom-btn" onclick="adjustZoom(0.9)">−</button>
+        <button class="zoom-btn" onclick="adjustZoom(1.1)">+</button>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('canvas-container');
+    const slider = document.getElementById('velocitySlider');
+    const vDisplay = document.getElementById('vDisplay');
+    const orbitTypeDisplay = document.getElementById('orbitType');
+    const eDisplay = document.getElementById('eccentricityDisplay');
+
+    let view = {
+        scale: 1,
+        offsetX: 0,
+        offsetY: 0,
+        isDragging: false,
+        lastX: 0,
+        lastY: 0
+    };
+
+    const GM = 1; 
+    const R_START = 150;
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        draw();
+    }
+    window.addEventListener('resize', resize);
+
+    function setSpeed(val) {
+        slider.value = val;
+        draw();
+    }
+
+    function adjustZoom(factor) {
+        view.scale *= factor;
+        draw();
+    }
+
+    // --- Interaction Handlers ---
+    container.addEventListener('mousedown', e => {
+        if (e.target.tagName !== 'CANVAS') return;
+        view.isDragging = true;
+        view.lastX = e.clientX;
+        view.lastY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => view.isDragging = false);
+    
+    window.addEventListener('mousemove', e => {
+        if (!view.isDragging) return;
+        view.offsetX += e.clientX - view.lastX;
+        view.offsetY += e.clientY - view.lastY;
+        view.lastX = e.clientX;
+        view.lastY = e.clientY;
+        draw();
+    });
+
+    container.addEventListener('touchstart', e => {
+        if (e.target.tagName !== 'CANVAS') return;
+        view.isDragging = true;
+        view.lastX = e.touches[0].clientX;
+        view.lastY = e.touches[0].clientY;
+    }, {passive: false});
+
+    window.addEventListener('touchend', () => view.isDragging = false);
+
+    window.addEventListener('touchmove', e => {
+        if (!view.isDragging) return;
+        e.preventDefault();
+        const x = e.touches[0].clientX;
+        const y = e.touches[0].clientY;
+        view.offsetX += x - view.lastX;
+        view.offsetY += y - view.lastY;
+        view.lastX = x;
+        view.lastY = y;
+        draw();
+    }, {passive: false});
+
+    window.addEventListener('wheel', e => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        view.scale *= factor;
+        draw();
+    }, { passive: false });
+
+
+    function draw() {
+        try {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const cx = canvas.width / 2 + view.offsetX;
+            const cy = canvas.height / 2 + view.offsetY;
+            const R_VISUAL = R_START * view.scale;
+
+            let vRatio = parseFloat(slider.value);
+            
+            if (Math.abs(vRatio - Math.sqrt(2)) < 0.02) vRatio = Math.sqrt(2);
+            if (Math.abs(vRatio - 1.0) < 0.015) vRatio = 1.0;
+
+            const E = (vRatio * vRatio) / 2 - 1;
+            const h = vRatio;
+            let e = Math.sqrt(1 + 2 * E * h * h);
+            
+            if (vRatio === Math.sqrt(2)) e = 1.0;
+            if (vRatio === 1.0) e = 0.0;
+
+            const p = h * h;
+            
+            vDisplay.textContent = vRatio.toFixed(3);
+            eDisplay.textContent = e.toFixed(3);
+
+            let orbitColor = "#fbbf24";
+            
+            if (vRatio < 0.999) {
+                orbitTypeDisplay.textContent = "Elliptical (Launch = Apoapsis)";
+                orbitTypeDisplay.style.color = "#fbbf24";
+            } else if (vRatio >= 0.999 && vRatio <= 1.001) {
+                orbitTypeDisplay.textContent = "Circular";
+                orbitTypeDisplay.style.color = "#4ade80";
+            } else if (vRatio > 1.001 && e < 0.999) {
+                orbitTypeDisplay.textContent = "Elliptical (Launch = Periapsis)";
+                orbitTypeDisplay.style.color = "#fbbf24";
+            } else if (e >= 0.999 && e <= 1.001) {
+                orbitTypeDisplay.textContent = "Parabolic (Escape)";
+                orbitTypeDisplay.style.color = "#f472b6"; 
+                orbitColor = "#f472b6";
+            } else {
+                orbitTypeDisplay.textContent = "Hyperbolic (Escape)";
+                orbitColor = "#f87171"; 
+                orbitTypeDisplay.style.color = "#f87171";
+            }
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, 5 * view.scale, 0, Math.PI * 2); 
+            ctx.fillStyle = 'white';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, R_VISUAL, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)'; 
+            ctx.lineWidth = 2; 
+            ctx.setLineDash([8 * view.scale, 8 * view.scale]); 
+            ctx.stroke();
+            ctx.setLineDash([]); 
+
+            ctx.beginPath();
+            ctx.strokeStyle = orbitColor;
+            ctx.lineWidth = 3;
+
+            let step = 0.02;
+            let startAngle = 0;
+            let endAngle = Math.PI * 2;
+            
+            // If open orbit (escape), limit angles to avoid infinity
+            if (e >= 1.0) {
+                let limitAngle;
+                if (e === 1.0) limitAngle = Math.PI - 0.1; 
+                else limitAngle = Math.acos(-1/e) - 0.05; 
+                
+                startAngle = -limitAngle;
+                endAngle = limitAngle;
+                step = 0.01; 
+            }
+
+            let firstPoint = true;
+
+            for (let theta = startAngle; theta <= endAngle; theta += step) {
+                const r_norm = p / (1 + e * Math.cos(theta));
+                
+                // FIXED: Removed strict upper bound for closed orbits.
+                // Only open orbits (e >= 1) risk infinity naturally.
+                // For e < 1, r is finite. We only check if it is valid positive.
+                if (r_norm < 0) continue; 
+                
+                const r_pixels = r_norm * R_VISUAL; 
+                
+                // Performance Check:
+                // We keep a very high pixel limit (1,000,000) just to prevent rendering crashes
+                // if someone zooms in infinitely, but it's high enough to draw the full ellipse usually.
+                if (r_pixels > 1000000) continue;
+
+                let x = r_pixels * Math.cos(theta);
+                let y = r_pixels * Math.sin(theta);
+                
+                let rotX, rotY;
+                if (vRatio >= 1) {
+                     rotX = x * Math.cos(-Math.PI/2) - y * Math.sin(-Math.PI/2);
+                     rotY = x * Math.sin(-Math.PI/2) + y * Math.cos(-Math.PI/2);
+                } else {
+                     rotX = x * Math.cos(Math.PI/2) - y * Math.sin(Math.PI/2);
+                     rotY = x * Math.sin(Math.PI/2) + y * Math.cos(Math.PI/2);
+                }
+
+                if (firstPoint) {
+                    ctx.moveTo(cx + rotX, cy + rotY);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(cx + rotX, cy + rotY);
+                }
+            }
+            
+            if (e < 1.0) {
+                ctx.closePath();
+            }
+            
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy - R_VISUAL, 6 * view.scale, 0, Math.PI * 2);
+            ctx.fillStyle = '#4ade80';
+            ctx.fill();
+        } catch (err) {
+            console.error("Drawing error:", err);
+        }
+    }
+
+    slider.addEventListener('input', draw);
+    resize();
+
+</script>
+</body>
+</html>
