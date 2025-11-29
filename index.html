@@ -16,29 +16,97 @@
             align-items: center;
         }
 
-        /* FIXED: pointer-events logic */
+        /* --- Floating Window Styles --- */
         #controls {
             position: absolute;
             top: 20px;
             left: 20px;
             background: rgba(30, 41, 59, 0.95);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            border-radius: 8px; /* Slightly sharper corners for window look */
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
             width: 300px;
             backdrop-filter: blur(5px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             user-select: none;
             z-index: 1000;
-            pointer-events: none;
-        }
-
-        #controls > * {
+            display: flex;
+            flex-direction: column;
+            
+            /* Resizable properties */
+            resize: horizontal; 
+            overflow: hidden; /* Required for resize handle to show */
+            min-width: 250px;
+            max-width: 600px;
+            
+            /* Ensure it catches clicks */
             pointer-events: auto;
         }
 
-        h2 { margin: 0 0 15px 0; font-size: 1.2rem; color: #38bdf8; }
+        /* Drag Handle Header */
+        #panel-header {
+            padding: 10px 15px;
+            background: rgba(15, 23, 42, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: move; /* Indicates draggable */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
+        #panel-header h2 {
+            margin: 0;
+            font-size: 1rem;
+            color: #38bdf8;
+            pointer-events: none; /* Let clicks pass to header for dragging */
+        }
+
+        #minimize-btn {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0 5px;
+            line-height: 1;
+        }
+        #minimize-btn:hover { color: white; background: none; }
+
+        /* Content Area */
+        #panel-content {
+            padding: 15px;
+            overflow-y: auto; /* Handle internal content scrolling if resized too small */
+        }
+
+        /* Minimized State */
+        #controls.minimized {
+            resize: none; /* Lock size when minimized */
+            height: auto !important; /* Force auto height */
+            width: 300px !important; /* Reset width */
+        }
+
+        #controls.minimized #panel-content > :not(.essential-only) {
+            display: none;
+        }
+        
+        #controls.minimized .essential-elements-wrapper {
+             /* Wrapper specific logic if needed */
+        }
+
+        /* Essential Elements (Slider) Styling updates for minimized view */
+        .slider-wrapper { margin-bottom: 0; }
+        
+        /* Hiding specific parts of the slider container in minimized mode */
+        #controls.minimized .slider-labels,
+        #controls.minimized .btn-group,
+        #controls.minimized .zoom-hint {
+            display: none;
+        }
+        
+        #controls.minimized .slider-container {
+            margin-bottom: 0;
+        }
+
+        /* --- Existing UI Styles --- */
         .slider-container { margin-bottom: 20px; }
         
         label { display: block; margin-bottom: 8px; font-weight: bold; font-size: 0.9rem; }
@@ -109,7 +177,7 @@
             margin-top: 10px;
         }
 
-        button {
+        button.action-btn {
             background: #334155;
             border: 1px solid #475569;
             color: white;
@@ -118,10 +186,8 @@
             cursor: pointer;
             font-size: 0.8rem;
             flex: 1;
-            position: relative;
-            z-index: 1001;
         }
-        button:hover { background: #475569; }
+        button.action-btn:hover { background: #475569; }
 
         .zoom-controls {
             position: absolute;
@@ -144,6 +210,14 @@
             color: white;
             cursor: pointer;
         }
+        
+        .slider-labels {
+            display: flex; 
+            justify-content: space-between; 
+            font-size: 0.7rem; 
+            color: #94a3b8; 
+            margin-top: 5px;
+        }
 
     </style>
 </head>
@@ -154,40 +228,47 @@
     </div>
 
     <div id="controls">
-        <h2>Orbital Control</h2>
-        
-        <div class="slider-container">
-            <label for="velocitySlider">Velocity (v): <span id="vDisplay">1.00</span> v<sub>orb</sub></label>
-            <input type="range" id="velocitySlider" min="0.5" max="2.0" step="0.001" value="1.0">
-            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #94a3b8; margin-top: 5px;">
-                <span>Fall</span>
-                <span>Circ (1.0)</span>
-                <span>Esc (1.41)</span>
-                <span>Fast</span>
-            </div>
-            <div class="btn-group">
-                <button onclick="setSpeed(1.0)">Set Circular</button>
-                <button onclick="setSpeed(1.414)">Set Escape</button>
-            </div>
-        </div>
-
-        <div class="stats">
-            <span id="orbitType" class="classification">Circular Orbit</span>
-            <div class="stat-row">
-                <span>Eccentricity (e):</span>
-                <span id="eccentricityDisplay" class="stat-val">0.00</span>
-            </div>
-        </div>
-
-        <div class="legend" style="margin-top: 20px;">
-            <div><span style="border: 1px dashed #38bdf8; width: 15px; height: 0px; display: inline-block; vertical-align: middle;"></span> Reference Circular Orbit</div>
-            <div><span style="background: #fbbf24; width: 15px; height: 2px; display: inline-block; vertical-align: middle;"></span> Current Trajectory</div>
-            <div><span style="background: white; border-radius: 50%;"></span> Central Mass</div>
-            <div><span style="background: #4ade80; border-radius: 50%;"></span> Injection Point</div>
+        <div id="panel-header">
+            <h2>Orbital Control</h2>
+            <button id="minimize-btn" title="Minimize">−</button>
         </div>
         
-        <div style="margin-top: 15px; font-size: 0.8rem; color: #64748b; font-style: italic;">
-            * Scroll to Zoom, Drag to Move
+        <div id="panel-content">
+            <!-- Added 'essential-only' class to wrapper to keep it visible during minimize -->
+            <div class="slider-container essential-only">
+                <label for="velocitySlider">Velocity (v): <span id="vDisplay">1.00</span> v<sub>orb</sub></label>
+                <input type="range" id="velocitySlider" min="0.5" max="2.0" step="0.001" value="1.0">
+                
+                <div class="slider-labels">
+                    <span>Fall</span>
+                    <span>Circ (1.0)</span>
+                    <span>Esc (1.41)</span>
+                    <span>Fast</span>
+                </div>
+                <div class="btn-group">
+                    <button class="action-btn" onclick="setSpeed(1.0)">Set Circular</button>
+                    <button class="action-btn" onclick="setSpeed(1.414)">Set Escape</button>
+                </div>
+            </div>
+
+            <div class="stats">
+                <span id="orbitType" class="classification">Circular Orbit</span>
+                <div class="stat-row">
+                    <span>Eccentricity (e):</span>
+                    <span id="eccentricityDisplay" class="stat-val">0.00</span>
+                </div>
+            </div>
+
+            <div class="legend">
+                <div><span style="border: 1px dashed #38bdf8; width: 15px; height: 0px; display: inline-block; vertical-align: middle;"></span> Reference Circular Orbit</div>
+                <div><span style="background: #fbbf24; width: 15px; height: 2px; display: inline-block; vertical-align: middle;"></span> Current Trajectory</div>
+                <div><span style="background: white; border-radius: 50%;"></span> Central Mass</div>
+                <div><span style="background: #4ade80; border-radius: 50%;"></span> Injection Point</div>
+            </div>
+            
+            <div class="zoom-hint" style="margin-top: 15px; font-size: 0.8rem; color: #64748b; font-style: italic;">
+                * Scroll to Zoom, Drag to Move Map
+            </div>
         </div>
     </div>
 
@@ -204,6 +285,11 @@
     const vDisplay = document.getElementById('vDisplay');
     const orbitTypeDisplay = document.getElementById('orbitType');
     const eDisplay = document.getElementById('eccentricityDisplay');
+    
+    // Panel Elements
+    const controls = document.getElementById('controls');
+    const header = document.getElementById('panel-header');
+    const minimizeBtn = document.getElementById('minimize-btn');
 
     let view = {
         scale: 1,
@@ -213,6 +299,57 @@
         lastX: 0,
         lastY: 0
     };
+
+    // --- Panel Logic (Drag & Minimize) ---
+
+    // Minimize Toggle
+    minimizeBtn.addEventListener('click', () => {
+        controls.classList.toggle('minimized');
+        if (controls.classList.contains('minimized')) {
+            minimizeBtn.textContent = '+';
+        } else {
+            minimizeBtn.textContent = '−';
+        }
+    });
+
+    // Panel Dragging
+    let isPanelDragging = false;
+    let panelStartX, panelStartY, panelStartLeft, panelStartTop;
+
+    header.addEventListener('mousedown', (e) => {
+        // Don't drag if clicking the minimize button
+        if(e.target === minimizeBtn) return;
+        
+        isPanelDragging = true;
+        panelStartX = e.clientX;
+        panelStartY = e.clientY;
+        
+        // Get current computed position
+        const rect = controls.getBoundingClientRect();
+        panelStartLeft = rect.left;
+        panelStartTop = rect.top;
+        
+        // Remove bottom/right positioning if any, switch to top/left only
+        controls.style.bottom = 'auto';
+        controls.style.right = 'auto';
+        controls.style.width = rect.width + 'px'; // Freeze width during drag
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (isPanelDragging) {
+            const dx = e.clientX - panelStartX;
+            const dy = e.clientY - panelStartY;
+            controls.style.left = (panelStartLeft + dx) + 'px';
+            controls.style.top = (panelStartTop + dy) + 'px';
+        }
+    });
+
+    window.addEventListener('mouseup', () => {
+        isPanelDragging = false;
+    });
+
+
+    // --- Existing Simulation Logic ---
 
     const GM = 1; 
     const R_START = 150;
@@ -234,7 +371,7 @@
         draw();
     }
 
-    // --- Interaction Handlers ---
+    // Canvas Interaction
     container.addEventListener('mousedown', e => {
         if (e.target.tagName !== 'CANVAS') return;
         view.isDragging = true;
@@ -350,7 +487,6 @@
             let startAngle = 0;
             let endAngle = Math.PI * 2;
             
-            // If open orbit (escape), limit angles to avoid infinity
             if (e >= 1.0) {
                 let limitAngle;
                 if (e === 1.0) limitAngle = Math.PI - 0.1; 
@@ -366,16 +502,10 @@
             for (let theta = startAngle; theta <= endAngle; theta += step) {
                 const r_norm = p / (1 + e * Math.cos(theta));
                 
-                // FIXED: Removed strict upper bound for closed orbits.
-                // Only open orbits (e >= 1) risk infinity naturally.
-                // For e < 1, r is finite. We only check if it is valid positive.
                 if (r_norm < 0) continue; 
                 
                 const r_pixels = r_norm * R_VISUAL; 
                 
-                // Performance Check:
-                // We keep a very high pixel limit (1,000,000) just to prevent rendering crashes
-                // if someone zooms in infinitely, but it's high enough to draw the full ellipse usually.
                 if (r_pixels > 1000000) continue;
 
                 let x = r_pixels * Math.cos(theta);
